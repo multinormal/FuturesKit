@@ -19,8 +19,9 @@ operations fails.
 FuturesKit uses Grand Central Dispatch (GCD, libdispatch) to perform the required
 asynchronous and synchronous operations. FuturesKit was originally inspired by 
 [BrightFutures](https://github.com/Thomvis/BrightFutures). While the APIs for FuturesKit and
-BrightFutures are similar, their implementations are somewhat different (one example of this
-is that FuturesKit's `Future` is a value type, while BrightFutures's `Future` is a reference type).
+BrightFutures are similar, their implementations are quite different. At a high level, one example 
+of this difference is that FuturesKit's `Future` is a value type, while BrightFutures's `Future` 
+is a reference type: using value types can make it much easier to reason about memory management.
 
 ## Installation
 
@@ -44,11 +45,10 @@ let package = Package(
 You are encouraged to contribute to FuturesKit with a focus on identifying and fixing bugs rather
 than adding major new features and making FuturesKit more complex. If you find a bug, please write
 a unit test that exercises that bug and create a pull request. Ideally, please create a second
-pull request based on that unit test that fixes the bug. 
+pull request based on the unit test that fixes the bug. 
 
 To build FuturesKit, check out the repository and run `swift build`. To run the unit tests, run
 `swift test`.
-
 
 ## Documentation
 
@@ -95,7 +95,7 @@ FuturesKit provides three types:
 
 ### Creating a simple `Future`
 
-The easiest way to create a `Future` is to use the functions `future`:
+The easiest way to create a `Future` is to use the `future` function:
 
 ```swift
 func someLongRunningComputation() -> Int {
@@ -165,8 +165,8 @@ func handler(pedometerData: CMPedometerData?, error: Error?) {
 // Querying the pedometer can take some time to complete, so must be done on a concurrent thread.
 let queue = DispatchQueue(label: "my.domain", attributes: DispatchQueue.Attributes.concurrent)
 queue.async {
+  let startDate = Date(timeIntervalSinceNow: -24 * 60 * 60) // 24 hours ago.
   let endDate = Date() // Now.
-  let startDate = Date(timeIntervalSinceNow: -24 * 60 * 60) // One day ago.
   pedometer.queryPedometerData(from: startDate, to: endDate, withHandler: handler)
 }
 
@@ -248,92 +248,132 @@ overloading has often proven be problematic in other languages, it works quite w
 especially when Xcode is used to display the inferred types of variables and results of the transforms 
 and compositions.
 
-The available operators and functions are:
+**Transforming a `Future<T>` to a `Future<U>`:**
 
-**`func • <T,U>(f: @escaping (T) throws -> U, t: Future<T>) -> Future<U>`**
+```swift
+func • <T,U>(f: @escaping (T) throws -> U, t: Future<T>) -> Future<U>
+```
 
 Given a function `f` that maps from type `T` to type `U`, and a `Future` `t` of type `T`, 
 `f • t` is a `Future` of type `U`. Function `f` may throw, in which case the resulting
 `Future` will fail.
 
-**`func • <T,U>(f: @escaping (T) throws -> Future<U>, t: Future<T>) -> Future<U>`**
+```swift
+func • <T,U>(f: @escaping (T) throws -> Future<U>, t: Future<T>) -> Future<U>
+```
 
 Given a function `f` that maps from type `T` to a `Future` of type `U`, and a `Future` `t` 
 of type `T`, `f • t` is a `Future` of type `U`. Function `f` may throw, in which case the 
 resulting `Future` will fail.
 
-**`func • <S:Sequence, T>(f: (S.Iterator.Element) throws -> Future<T>, s: S) -> Future<[T]>`**
+**Mapping a function that returns a `Future` or `GuaranteedFuture` over a `SequenceType`:**
+
+```swift
+func • <S:Sequence, T>(f: (S.Iterator.Element) throws -> Future<T>, s: S) -> Future<[T]>
+```
 
 Given a function `f` that maps from an element of a sequence of type `S` to a `Future` of type `T`, 
 and a sequence of type `S`, `f • s` is a `Future` of type `[T]`. Function `f` may throw, in 
 which case the resulting `Future` will fail.
 
-**`func • <T,U>(t: Future<T>, u: Future<U>) -> Future<(T, U)>`**
-
-Given a `Future` `t` of type `T` and a `Future` `u` of type `U`, `t • u` is a `Future` of type
-`(T, U)`. If one or both of `t` and `u` fail, the resulting `Future` will fail.
-
-**`func • <S,T,U>(s: Future<S>, tu: Future<(T, U)>) -> Future<(S,T,U)>`**
-
-Given a `Future` `s` of type `S` and a `Future` `tu` of type `(T, U)`, `s • tu` is a `Future` of type
-`(S, T, U)`. If one or both of `s` and `tu` fail, the resulting `Future` will fail.
-
-**`func • <T,U>(f: @escaping (T) -> U, t: GuaranteedFuture<T>) -> GuaranteedFuture<U>`**
-
-Given a function `f` that maps from type `T` to type `U`, and a `GuaranteedFuture` `t` of type `T`, 
-`f • t` is a `GuaranteedFuture` of type `U`.
-
-**`func • <T,U>(f: @escaping (T) throws -> U, t: GuaranteedFuture<T>) -> Future<U>`**
-
-Given a function `f` that maps from type `T` to type `U`, and a `GuaranteedFuture` `t` of type `T`, 
-`f • t` is a `Future` of type `U`. Since function `f` may throw, the result type cannot be
-a `GuaranteedFuture`. If `f` throws, the resulting `Future` will fail.
-
-**`func • <T,U>(f: @escaping (T) throws -> Future<U>, t: GuaranteedFuture<T>) -> Future<U>`**
-
-Given a function `f` that maps from type `T` to a `Future ` of type `U`, and a `GuaranteedFuture` 
-`t` of type `T`, `f • t` is a `Future` of type `U`. Since function `f` may throw, the result type
-cannot be a `GuaranteedFuture`. If `f` throws, the resulting `Future` will fail.
-
-**`func • <S:Sequence, T>(f: (S.Iterator.Element) -> GuaranteedFuture<T>, s: S) -> GuaranteedFuture<[T]>`**
+```swift
+func • <S:Sequence, T>(f: (S.Iterator.Element) -> GuaranteedFuture<T>, s: S) -> GuaranteedFuture<[T]>
+```
 
 Given a function `f` that maps from an element of a sequence of type `S` to a `GuaranteedFuture` of 
 type `T`, and a sequence of type `S`, `f • s` is a `GuaranteedFuture` of type `[T]`.
 
-**`func • <S:Sequence, T>(f: @escaping (S.Iterator.Element) throws -> GuaranteedFuture<T>, s: S) -> Future<[T]>`**
+```swift
+func • <S:Sequence, T>(f: @escaping (S.Iterator.Element) throws -> GuaranteedFuture<T>, s: S) -> Future<[T]>
+```
 
 Given a function `f` that maps from an element of a sequence of type `S` to a `GuaranteedFuture` of type 
 `T`, and a sequence of type `S`, `f • s` is a `Future` of type `[T]`. Since function `f` may throw, the 
 result type cannot be a `GuaranteedFuture`. If `f` throws, the resulting `Future` will fail.
 
-**`func • <T,U>(t: GuaranteedFuture<T>, u: GuaranteedFuture<U>) -> GuaranteedFuture<(T, U)>`**
+**Composing multiple `Future`s (or `GuaranteedFuture`s) into a single `Future` (or `GuaranteedFuture`s) of a tuple:**
+
+```swift
+func • <T,U>(t: Future<T>, u: Future<U>) -> Future<(T, U)>
+```
+
+Given a `Future` `t` of type `T` and a `Future` `u` of type `U`, `t • u` is a `Future` of type
+`(T, U)`. If one or both of `t` and `u` fail, the resulting `Future` will fail.
+
+```swift
+func • <S,T,U>(s: Future<S>, tu: Future<(T, U)>) -> Future<(S,T,U)>
+```
+
+Given a `Future` `s` of type `S` and a `Future` `tu` of type `(T, U)`, `s • tu` is a `Future` of type
+`(S, T, U)`. If one or both of `s` and `tu` fail, the resulting `Future` will fail.
+
+```swift
+func • <T,U>(t: GuaranteedFuture<T>, u: GuaranteedFuture<U>) -> GuaranteedFuture<(T, U)>
+```
 
 Given a `GuaranteedFuture` `t` of type `T` and a `GuaranteedFuture` `u` of type `U`, `t • u` is a 
 `GuaranteedFuture` of type `(T, U)`.
 
-**`func • <S,T,U>(s: GuaranteedFuture<S>, tu: GuaranteedFuture<(T, U)>) -> GuaranteedFuture<(S,T,U)>`**
+```swift
+func • <S,T,U>(s: GuaranteedFuture<S>, tu: GuaranteedFuture<(T, U)>) -> GuaranteedFuture<(S,T,U)>
+```
 
 Given a `GuaranteedFuture` `s` of type `S` and a `GuaranteedFuture` `tu` of type `(T, U)`, `s • tu` is 
 a `GuaranteedFuture` of type `(S, T, U)`.
 
-**`func • <S,T,U,V>(s: GuaranteedFuture<S>, tu: GuaranteedFuture<(T, U, V)>) -> GuaranteedFuture<(S,T,U,V)>`**
+```swift
+func • <S,T,U,V>(s: GuaranteedFuture<S>, tu: GuaranteedFuture<(T, U, V)>) -> GuaranteedFuture<(S,T,U,V)>
+```
 
 Given a `GuaranteedFuture` `s` of type `S` and a `GuaranteedFuture` `tu` of type `(T, U, V)`, `s • tu` is 
 a `GuaranteedFuture` of type `(S, T, U, V)`.
 
-**`func • <T,U>(t: Future<T>, u: GuaranteedFuture<U>) -> Future<(T, U)>`**
+```swift
+func • <T,U>(t: Future<T>, u: GuaranteedFuture<U>) -> Future<(T, U)>
+```
 
 Given a `Future` `t` of type `T` and a `GuaranteedFuture` `u` of type `U`, `t • u` is a 
 `Future` of type `(T, U)`. Since `t` may fail, the result type cannot be a `GuaranteedFuture`.
 If `t` fails, the resulting `Future` will fail.
 
-**`func • <T,U>(t: GuaranteedFuture<T>, u: Future<U>) -> Future<(T, U)>`**
+```swift
+func • <T,U>(t: GuaranteedFuture<T>, u: Future<U>) -> Future<(T, U)>
+```
 
 Given a `GuaranteedFuture` `t` of type `T` and a `Future` `u` of type `U`, `t • u` is a 
 `Future` of type `(T, U)`. Since `u` may fail, the result type cannot be a `GuaranteedFuture`.
 If `u` fails, the resulting `Future` will fail.
 
-**`func •? <T>(p: @escaping (T) throws -> Bool, t: Future<T>) -> Future<T>`**
+**Applying functions to `GuaranteedFuture`s:**
+
+```swift
+func • <T,U>(f: @escaping (T) -> U, t: GuaranteedFuture<T>) -> GuaranteedFuture<U>
+```
+
+Given a function `f` that maps from type `T` to type `U`, and a `GuaranteedFuture` `t` of type `T`, 
+`f • t` is a `GuaranteedFuture` of type `U`.
+
+```swift
+func • <T,U>(f: @escaping (T) throws -> U, t: GuaranteedFuture<T>) -> Future<U>
+```
+
+Given a function `f` that maps from type `T` to type `U`, and a `GuaranteedFuture` `t` of type `T`, 
+`f • t` is a `Future` of type `U`. Since function `f` may throw, the result type cannot be
+a `GuaranteedFuture`. If `f` throws, the resulting `Future` will fail.
+
+```swift
+func • <T,U>(f: @escaping (T) throws -> Future<U>, t: GuaranteedFuture<T>) -> Future<U>
+```
+
+Given a function `f` that maps from type `T` to a `Future ` of type `U`, and a `GuaranteedFuture` 
+`t` of type `T`, `f • t` is a `Future` of type `U`. Since function `f` may throw, the result type
+cannot be a `GuaranteedFuture`. If `f` throws, the resulting `Future` will fail.
+
+**Applying a predicate to a `Future`:**
+
+```swift
+func •? <T>(p: @escaping (T) throws -> Bool, t: Future<T>) -> Future<T>
+```
 
 Given a predicate function `p` that tests whether a value of type `T` satisfies some criterion
 (i.e., returns `true` if the criterion is satisfied) and a `Future` of type `T`, `p •? t` is a
@@ -341,19 +381,31 @@ Given a predicate function `p` that tests whether a value of type `T` satisfies 
 predicate `p`. Function `f` may throw, in which case the resulting `Future` will fail. **Using
 the `•?` operator can result in race conditions. See the note on invalidating callbacks below.**
 
-**`func flatten<T>(_ future: Future<Future<T>>) -> Future<T>`**
+**Flattening a nested `Future`:**
+
+```swift
+func flatten<T>(_ future: Future<Future<T>>) -> Future<T>
+```
 
 Given a `Future` `future` of type `Future<T>` (i.e., a future of a future), `flatten(future)`
 is a `Future` of type `T`.
 
-**`func lift<S, T, U>(_ f: @escaping (S, T) throws -> U) -> (Future<S>, Future<T>) -> Future<U>`**
+**Transforming a function to operate on arguments of type `Future`:**
+
+```swift
+func lift<S, T, U>(_ f: @escaping (S, T) throws -> U) -> (Future<S>, Future<T>) -> Future<U>
+```
 
 Given a function `f` that maps from type `(S, T)` to type `U`, `lift(f)` is a function that
 maps from type `(Future<S>, Future<T>)` to a `Future` of type `U`. In other words, `lift` takes
 a function whose arguments are not `Future`s and returns a function whose arguments are `Future`s.
 Function `f` may throw, in which case the resulting `Future` will fail.
 
-**`func await<T>(_ future: Future<T>) throws -> T`**
+**Waiting for a `Future` to complete:**
+
+```swift
+func await<T>(_ future: Future<T>) throws -> T
+```
 
 Given a `Future` `future` of type `T`, `await(future)` halts the current thread until the `Future`
 succeeds or fails. If the `Future` succeeds, the `Future`'s value of type `T` is returned. If the
@@ -363,9 +415,14 @@ particular, care should be taken not to call this function on a "special" thread
 thread in an iOS app. No attempt is made to ensure that this function is not called on the main 
 thread.
 
-**`reduce`**
+**Reducing a `SequenceType` of `Future`s:**
 
-To perform a reduce on a `SequenceType` of `Futures`, use lift along with `SequenceType`'s `reduce`
+From Foundation:
+```swift
+func reduce<T>(initial: T, @noescape combine: (T, Self.Generator.Element) throws -> T) rethrows -> T
+```
+
+To perform a reduce on a `SequenceType` of `Futures`, use `lift` along with `SequenceType`'s `reduce`
 method (see the unit test examples).
 
 **IMPORTANT:** The functions passed to the above methods will NOT be executed on the
@@ -375,7 +432,7 @@ main thread, and these are the appropriate ways in which to perform side effects
 executed on the main thread.
 
 
-# Invalidating callbacks (and avoiding race conditions):
+## Invalidating callbacks (and avoiding race conditions):
 
 It is not possible to explicitly remove or cancel a callback once it has been added.
 However, it is a common use case that a callback should not be run if a certain
